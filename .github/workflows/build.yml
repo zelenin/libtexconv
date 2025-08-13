@@ -1,0 +1,124 @@
+name: build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  ARCHIVE_NAME: libtexconv
+
+jobs:
+
+  setup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.setup-tag.outputs.tag }}
+    steps:
+      - name: Setup tag
+        id: setup-tag
+        run: |
+          if [[ ${{ github.ref }} == refs/tags/v* ]]; then
+            TAG=$(echo ${{ github.ref }} | sed -e "s#refs/tags/##g")
+          else
+            TAG=$(echo ${{ github.sha }} | cut -c1-7)
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+  build_win:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          git clone https://github.com/microsoft/DirectXTex.git
+          cd DirectXTex
+          git checkout sep2024
+
+      - name: build
+        run: |
+          batch_files/build.bat
+
+      - name: Archive release
+        run: |
+          tar -a -c -f "${{ env.ARCHIVE_NAME }}-${{ needs.setup.outputs.tag }}-win_x64.zip" texconv.dll
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-build
+          path: "${{ env.ARCHIVE_NAME }}-${{ needs.setup.outputs.tag }}-win_x64.zip"
+
+  build_lin:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          git clone https://github.com/microsoft/DirectXTex.git
+          cd DirectXTex
+          git checkout sep2024
+          cd ./../unix_external
+          git clone https://github.com/microsoft/DirectXMath.git
+          cd DirectXMath
+          git checkout apr2025
+          cd ..
+          git clone https://github.com/microsoft/DirectX-Headers.git
+          cd DirectX-Headers
+          git checkout v1.616.0
+          cd ..
+          git clone https://github.com/intel/safestringlib.git
+          cd safestringlib
+          git checkout v1.2.0
+
+      - name: build texconv
+        run: |
+          docker build -t libtexconv-builder -f Dockerfile .
+
+      - name: Archive release
+        run: |
+          docker run --name libtexconv-builder libtexconv-builder
+          docker cp libtexconv-builder:/src/libtexconv.so .
+          tar -czf "${{ env.ARCHIVE_NAME }}-${{ needs.setup.outputs.tag }}-lin_x64.tar.gz" libtexconv.so
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lin-build
+          path: "${{ env.ARCHIVE_NAME }}-${{ needs.setup.outputs.tag }}-lin_x64.tar.gz"
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [setup, build_win, build_lin]
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: win-build
+          path: artifacts/
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lin-build
+          path: artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.setup.outputs.tag }}
+          name: ${{ needs.setup.outputs.tag }}
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
