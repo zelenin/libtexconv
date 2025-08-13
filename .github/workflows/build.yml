@@ -47,8 +47,8 @@ jobs:
 
       - name: Archive release
         run: |
-          tar -a -c -f "${{ env.ARCHIVE_NAME }}-${{ needs.setup.outputs.tag }}-win_x64.zip" texconv.dll
-        shell: bash
+          Compress-Archive -Path texconv.dll -DestinationPath "${{ env.ARCHIVE_NAME }}-${{ needs.setup.outputs.tag }}-win_x64.zip"
+        shell: pwsh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
