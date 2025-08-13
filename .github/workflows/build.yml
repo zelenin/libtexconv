@@ -3,7 +3,7 @@ name: build
 on:
   push:
     tags:
-      - "v*"
+      - "*"
   workflow_dispatch:
 
 env:
@@ -21,7 +21,7 @@ jobs:
       - name: Setup tag
         id: setup-tag
         run: |
-          if [[ ${{ github.ref }} == refs/tags/v* ]]; then
+          if [[ ${{ github.ref }} == refs/tags/* ]]; then
             TAG=$(echo ${{ github.ref }} | sed -e "s#refs/tags/##g")
           else
             TAG=$(echo ${{ github.sha }} | cut -c1-7)
